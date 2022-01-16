@@ -1,0 +1,90 @@
+- name: join node
+  hosts: node2
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: replace line in crio
+      lineinfile:
+        path: /etc/crio/crio.conf
+        regexp: conmon=/usr/bin/conmon
+        line: conmon="/usr/bin/conmon"
+        state: present
+        backup: yes
+      notify:
+      - Restart crio
+
+    - name: Remove swapfile from /etc/fstab
+      mount:
+        name: "{{ item }}"
+        fstype: swap
+        state: absent
+      with_items:
+        - swap
+        - none
+
+    - name: Disable swap
+      command: swapoff -a
+      when: ansible_swaptotal_mb > 0
+
+
+    - name: Add an apt signing key for Kubernetes
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: copy ubuntu source
+      ansible.builtin.copy:
+        src: sources.list
+        dest: /etc/apt/sources.list
+        owner: root
+        group: root
+        mode: 0640
+
+    - name: Create kubernetes repo file
+      file:
+        path: "/etc/apt/sources.list.d/kubernetes.list"
+        state: "touch"
+
+    - name: Add K8s Source
+      blockinfile:
+        path: "/etc/apt/sources.list.d/kubernetes.list"
+        block: |
+              deb https://apt.kubernetes.io/ kubernetes-xenial main
+
+
+    - name: Install Kubernetes binaries
+      apt:
+        name: "{{ packages }}"
+        state: present
+        update_cache: yes
+      vars:
+        packages:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - kubelet
+          - kubeadm
+          - kubectl
+
+    - name: start crio
+      ansible.builtin.service:
+        name: crio
+        state: started
+
+    - name: reset kubeadm
+      ansible.builtin.command:
+        command: kubeadm reset -f
+      ignore_errors: yes
+
+    - name: copy join command
+      copy: src=join-command dest=/tmp/join-command.sh mode=0777
+
+    - name: join the node to cluster
+      command: sh /tmp/join-command.sh
+  handlers:
+    - name: Restart crio
+      ansible.builtin.service:
+        name: crio
+        state: restart
+
+

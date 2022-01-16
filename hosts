@@ -1,0 +1,2 @@
+node1 ansible_host=192.168.121.34 ansible_ssh_pass=vagrant ansible_ssh_user=vagrant
+node2 ansible_host=192.168.121.32 ansible_ssh_pass=vagrant ansible_ssh_user=vagrant

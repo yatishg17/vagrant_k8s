@@ -1,0 +1,1 @@
+kubeadm join 192.168.121.34:6443 --token bnr3p2.ah6odwegemkeuopy --discovery-token-ca-cert-hash sha256:414273eff9df78338cec70c98ea7948cba19c4ef4557f0d4c4e00411df12f35b 

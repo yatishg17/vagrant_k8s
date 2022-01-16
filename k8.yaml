@@ -1,0 +1,88 @@
+- name: install kuberentes
+  hosts: node1
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: replace line in crio
+      lineinfile:
+        path: /etc/crio/crio.conf
+        regexp: conmon=/usr/bin/conmon
+        line: conmon="/usr/bin/conmon" 
+        state: present
+        backup: yes
+      notify:
+      - Restart crio
+
+    - name: Remove swapfile from /etc/fstab
+      mount:
+        name: "{{ item }}"
+        fstype: swap
+        state: absent
+      with_items:
+        - swap
+        - none
+
+    - name: Disable swap
+      command: swapoff -a
+      when: ansible_swaptotal_mb > 0
+
+
+    - name: Add an apt signing key for Kubernetes
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+
+    - name: Create kubernetes repo file
+      file:
+        path: "/etc/apt/sources.list.d/kubernetes.list"
+        state: "touch"
+
+    - name: Add K8s Source
+      blockinfile:
+        path: "/etc/apt/sources.list.d/kubernetes.list"
+        block: |
+              deb https://apt.kubernetes.io/ kubernetes-xenial main
+
+
+    - name: Install Kubernetes binaries
+      apt: 
+        name: "{{ packages }}"
+        state: present
+        update_cache: yes
+      vars:
+        packages:
+          - apt-transport-https
+          - ca-certificates 
+          - curl
+          - kubelet 
+          - kubeadm 
+          - kubectl
+
+    - name: initialize cluster
+      command: kubeadm init --apiserver-advertise-address="192.168.121.34" --apiserver-cert-extra-sans="192.168.121.34"  --node-name k8s-master --pod-network-cidr=192.168.0.0/16
+
+    - name: Setup kubeconfig for vagrant user
+      command: "{{ item }}"
+      with_items:
+        - mkdir -p /home/vagrant/.kube
+        - cp -i /etc/kubernetes/admin.conf /home/vagrant/.kube/config
+        - chown vagrant:vagrant /home/vagrant/.kube/config
+
+    - name: Install calico pod network
+      become: false
+      command: kubectl create -f https://docs.projectcalico.org/manifests/calico.yaml
+
+    - name: Generate join command
+      command: kubeadm token create --print-join-command
+      register: join_command
+
+    - name: Copy join command to local file
+      local_action: copy content="{{ join_command.stdout_lines[0] }}" dest="./join-command" 
+
+  handlers:
+    - name: Restart crio
+      ansible.builtin.service:
+        name: crio
+        state: restart
+          
